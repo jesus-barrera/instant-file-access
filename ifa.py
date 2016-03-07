@@ -1,7 +1,7 @@
 import os
 import platform
-import sys
-import pickle
+from modules.parse import parse, Search, Subcommand
+from modules.config import load_config, save_config
 
 doc ='''
 Instant File access
@@ -17,14 +17,12 @@ Options:
 	-d --directory  searchs a directory
 '''
 
-CONFIG_FILE_NAME = 'ifa.conf'
 MEMORY_SIZE = 250
 
-config_file_path = ''
 list_results = False
 memory = []
 		
-def search(search_root, search_pattern, search_for_directory):
+def do_search(search_root, search_pattern, search_for_directory):
 	root = ''
 	results = []
 	compare.pattern = search_pattern.lower() # make case insensitive comparision
@@ -92,13 +90,6 @@ def compare(i=0, j=0):
 	if i == len(compare.pattern) or j == len(compare.word):
 		return 0
 
-	# pos = compare.word.find(compare.pattern[i], j)
-
-	# if (pos == -1):
-	# 	return compare(i+1, j)
-	# else:
-	# 	return max(1 + compare(i+1, pos+1), compare(i+1, j))
-
 	elif memory[i][j] != -1:
 		return memory[i][j]
 	else:
@@ -121,30 +112,11 @@ def launch(file_name):
 	else:
 		print 'Operative System not supported'
 
-def load_config():
-	config = {
-		'paths': {'default_root': ''}
-	}
+def show_paths():
+	config = load_config()
 
-	try:
-		config_file = open(config_file_path, 'rb')
-		try:
-			config = pickle.load(config_file)
-		except pickle.PickleError:
-			save_config(config)
-	except IOError:
-		save_config(config)
-	else:
-		config_file.close()
-
-	return config
-
-def save_config(config):
-	with open(config_file_path, 'wb') as config_file:
-		try:
-			pickle.dump(config, config_file, pickle.HIGHEST_PROTOCOL)
-		except pickle.PickleError as err:
-			print "Error: Couldn't write in {}".format(config_file_path)
+	for var, path in config['paths'].iteritems():
+		print '{}="{}"'.format(var, path)
 
 def set_path(var_name, path):
 	var_name = var_name.lower()
@@ -172,13 +144,6 @@ def unset_path(var_name):
 		print '"{}" has been unset'.format(var_name)
 	except KeyError:
 		print 'Error: path variable "{}" does not exist'.format(var_name)
-	
-def show_paths():
-	config = load_config()
-
-	for var, path in config['paths'].iteritems():
-		print '{}="{}"'.format(var, path)
-
 
 def open_dir(path):
 	config = load_config()
@@ -194,42 +159,27 @@ def initialize_memory():
 	memory = [[-1] * MEMORY_SIZE for x in range(MEMORY_SIZE)]
 
 if __name__ == '__main__':
+	res = parse(doc)
 
-	program_dir = os.path.dirname(os.path.realpath(__file__))
-	config_file_path = os.path.join(program_dir, CONFIG_FILE_NAME)
-				
-	# TODO: make a proper parsing for this. argparse and docop don't seem to work
-	args = sys.argv[1:]
+	if (isinstance(res, Search)):
+		options = res.opts
+		search_directory = False
 
-	if len(args) > 0:
-		if args[0] in ['set', 'unset', 'echo', 'open']:
-			command = args[0]
-			if command == 'set':
-				if len(args) == 3:
-					set_path(args[1], args[2])
-			elif command == 'unset':
-				if len(args) == 2:
-					unset_path(args[1])
-			elif command == 'echo':
-				if len(args) == 1:
-					show_paths()
-			elif command == 'open':
-				if len(args) == 2:
-					open_dir(args[1])
-		else:
-			if len(args) > 1:
-				search_for_directory = (args[0] == '-d')
+		if '-d' in options or '--directory' in options:
+			search_directory = True
 
-				if len(args) == 2:
-					if search_for_directory:
-						search(None, args[1], True)
-					else:
-						search(args[0], args[1], False)
-				elif len(args) == 3:
-					search(args[1], args[2], search_for_directory)
+		do_search(res.root, ' '.join(res.words), search_directory)
 
-			elif len(args) == 1:
-				search(None, args[0], False)
-	else:
-		print doc
+	elif(isinstance(res, Subcommand)):
+		cmd = res.cmd
+		args = res.args
+
+		if cmd == 'set':
+			set_path(args['var_name'], args['path'])
+		elif cmd == 'unset':
+			unset_path(args['var_name'])
+		elif cmd == 'echo':
+			show_paths()
+		elif cmd == 'open':
+			open_dir(args['var_name'])
 		
